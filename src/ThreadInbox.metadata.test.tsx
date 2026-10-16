@@ -9,6 +9,56 @@ vi.mock("sonner", async () => (await import("./test-inbox")).sonnerMock());
 await loadInboxApp();
 
 describe("card metadata", () => {
+  it.each([
+    [undefined, "gpt-6.1-sol", true, "medium", "Medium"],
+    ["GPT 6.1 Sol", "GPT 6.1 Sol", true, "medium", "Medium"],
+    ["GPT 6.1 Sol Medium", "GPT 6.1 Sol Medium", false, "medium", "Medium"],
+    ["GPT 6.1 Sol (Medium)", "GPT 6.1 Sol (Medium)", false, "medium", "Medium"],
+    ["My Custom Model", "My Custom Model", true, "xhigh", "Extra High"],
+    ["My Custom Model (Extra High)", "My Custom Model (Extra High)", false, "xhigh", "Extra High"],
+    ["My Custom Model Extra High", "My Custom Model Extra High", false, "xhigh", "Extra High"],
+    ["My Custom Model (xhigh)", "My Custom Model (xhigh)", false, "xhigh", "Extra High"],
+    ["My Custom Model", "My Custom Model", true, "custom", "Deep Thinking"],
+    ["My Custom Model (Deep Thinking)", "My Custom Model (Deep Thinking)", false, "custom", "Deep Thinking"],
+  ])(
+    "shows model display name %s with a raw ID fallback",
+    async (modelDisplayName, label, showReasoning, effort, effortLabel) => {
+      renderSlot(inbox, listProps, {
+        sidebarThreads: {
+          status: "ready",
+          threads: [thread({ id: "thr_model", title: "Model details" })],
+          projects: [],
+        },
+        providers: {
+          status: "ready",
+          providers: defaultProviders.map((provider) => ({
+            ...provider,
+            reasoningLevels: [{ id: "custom", label: "Deep Thinking" }],
+          })),
+        },
+        rpc: {
+          getThreadExecutionDetails: () => ({
+            model: "gpt-6.1-sol",
+            ...(modelDisplayName ? { modelDisplayName } : {}),
+            reasoningLevel: effort,
+          }),
+        },
+      });
+      fireEvent.pointerMove(screen.getByRole("link", { name: "Model details" }), { pointerType: "mouse" });
+      const details = await screen.findByRole("dialog", { name: "Thread details" });
+      await waitFor(() => expect(details.textContent).toContain(`Model: ${label}`));
+      expect(details.textContent?.includes(`Reasoning: ${effortLabel}`)).toBe(showReasoning);
+      expect(details.textContent).not.toContain("Provider:");
+      expect(details.textContent).not.toContain("codex");
+      expect(within(details).getByRole("img", { name: "Codex" })).toBeDefined();
+      const executionRow = within(details).getByText("Model:").parentElement!;
+      expect(executionRow.className).toContain("truncate");
+      expect(executionRow.getAttribute("title")).toBe(`${label}${showReasoning ? ` ${effortLabel}` : ""}`);
+      if (showReasoning) expect(executionRow.textContent).toContain(`${label} Reasoning: ${effortLabel}`);
+      if (modelDisplayName) expect(details.textContent).not.toContain("gpt-6.1-sol");
+    },
+  );
+
   it("always shows the provider glyph, even without a branch", async () => {
     render([thread({ id: "thr_p", providerId: "claude-code" })]);
     expect(await screen.findByLabelText("Claude Code")).toBeDefined();
@@ -153,7 +203,8 @@ describe("card metadata", () => {
     expect(details.textContent).not.toContain("Feature worktree");
     expect(details.textContent).toContain("Worktree branch: bb/details");
     expect(details.textContent).toContain("Machine: Build Mac");
-    expect(details.textContent).toContain("Provider: Claude Code");
+    expect(details.textContent).not.toContain("Provider:");
+    expect(within(details).getByRole("img", { name: "Claude Code" })).toBeDefined();
     expect(details.textContent).toContain("Model:");
     expect(within(details).queryByRole("list", { name: "Subthreads" })).toBeNull();
   });

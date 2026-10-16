@@ -16,6 +16,18 @@ import { ThreadPullRequestDetails } from "./ThreadPullRequests";
 import { compareChildThreads, useChildThreadDisplay } from "./ChildThreadDisplay";
 import { cn } from "./lib/utils";
 
+// Match the composer's built-in labels; provider-specific labels take precedence.
+const REASONING_LABELS: Readonly<Record<string, string>> = {
+  none: "None",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  ultracode: "Ultracode",
+  max: "Max",
+  ultra: "Ultra",
+};
+
 export function ThreadDetailsTooltip({
   thread,
   disabled,
@@ -26,6 +38,7 @@ export function ThreadDetailsTooltip({
   children: ReactElement;
 }) {
   const { providers } = useProviders();
+  const provider = providers.find((entry) => entry.id === thread.providerId);
   const { projects, threads } = useSidebarThreads();
   const navigate = useBbNavigate();
   const { call } = useRpc<typeof bbSidebarRpcContract>();
@@ -36,8 +49,24 @@ export function ThreadDetailsTooltip({
   const [open, setOpen] = useState(false);
   const [subthreadsExpanded, setSubthreadsExpanded] = useState(false);
   const subthreadsId = useId();
-  const [execution, setExecution] = useState({ model: "Loading…", reasoningLevel: "" });
+  const [execution, setExecution] = useState<{ model: string; modelDisplayName?: string; reasoningLevel: string }>({
+    model: "Loading…",
+    reasoningLevel: "",
+  });
   const visible = open && !disabled;
+  const modelLabel = execution.modelDisplayName || execution.model;
+  const effortLabel =
+    provider?.reasoningLevels?.find((level) => level.id === execution.reasoningLevel)?.label ??
+    REASONING_LABELS[execution.reasoningLevel] ??
+    execution.reasoningLevel;
+  const modelIncludesReasoning = [execution.reasoningLevel, effortLabel].some(
+    (label) =>
+      label &&
+      (modelLabel.toLowerCase().endsWith(` ${label.toLowerCase()}`) ||
+        modelLabel.toLowerCase().endsWith(` (${label.toLowerCase()})`)),
+  );
+  const reasoningLabel = modelIncludesReasoning ? "" : effortLabel;
+  const executionLabel = [modelLabel, reasoningLabel].filter(Boolean).join(" ");
 
   useEffect(() => {
     setSubthreadsExpanded(false);
@@ -61,7 +90,6 @@ export function ThreadDetailsTooltip({
 
   const { sort: childSort } = useChildThreadDisplay();
   const statusThread = useThreadWithDraft(thread);
-  const provider = providers.find((entry) => entry.id === thread.providerId);
   const project = projects.find((entry) => entry.id === thread.projectId);
   const isWorktree =
     thread.environment?.workspaceDisplayKind === "managed-worktree" ||
@@ -95,8 +123,8 @@ export function ThreadDetailsTooltip({
             value={thread.environment.branchName}
           />
         ) : null}
-        <div className="flex items-start gap-2">
-          <span className="relative mt-px flex size-3.5 shrink-0 items-center justify-center">
+        <div className="flex items-center gap-2">
+          <span className="relative flex size-3.5 shrink-0 items-center justify-center">
             <ProviderGlyph
               providerId={thread.providerId}
               provider={provider ?? null}
@@ -108,23 +136,17 @@ export function ThreadDetailsTooltip({
               </span>
             ) : null}
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="break-words">
-              <span className="sr-only">Model: </span>
-              {execution.model}
-            </div>
-            <div className="text-[11px] leading-4">
-              <span className="sr-only">Provider: </span>
-              {provider?.displayName ?? thread.providerId}
-              {execution.reasoningLevel ? (
-                <>
-                  <span aria-hidden> · </span>
-                  <span className="sr-only">Reasoning: </span>
-                  {execution.reasoningLevel}
-                </>
-              ) : null}
-            </div>
-          </div>
+          <span className="min-w-0 flex-1 truncate" title={executionLabel}>
+            <span className="sr-only">Model: </span>
+            {modelLabel}
+            {reasoningLabel ? (
+              <>
+                {" "}
+                <span className="sr-only">Reasoning: </span>
+                {reasoningLabel}
+              </>
+            ) : null}
+          </span>
         </div>
         <span className="sr-only">Status: {status}</span>
         {subthreads.length > 0 ? (

@@ -59,7 +59,24 @@ export function createServerHandlers(
     },
     async getThreadExecutionDetails({ threadId }) {
       const options = await ctx.bb.sdk.threads.defaultExecutionOptions({ threadId });
-      return options ? { model: options.model, reasoningLevel: options.reasoningLevel } : null;
+      if (!options) return null;
+      const details = { model: options.model, reasoningLevel: options.reasoningLevel };
+      try {
+        const thread = await ctx.bb.sdk.threads.get({ threadId });
+        if (!thread.environmentId) return details;
+        const catalog = await ctx.bb.sdk.providers.models({
+          environmentId: thread.environmentId,
+          providerId: thread.providerId,
+        });
+        const models = [...catalog.models, ...catalog.selectedOnlyModels];
+        const model =
+          models.find((entry) => entry.id === options.model) ?? models.find((entry) => entry.model === options.model);
+        const modelDisplayName = model?.displayName.trim();
+        return modelDisplayName ? { ...details, modelDisplayName } : details;
+      } catch {
+        // Offline hosts and unavailable provider catalogs must still show execution details.
+        return details;
+      }
     },
     async setThreadParent({ threadId, parentThreadId }) {
       return withPinParentChange(threadId, async () => {

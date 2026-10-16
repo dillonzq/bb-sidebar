@@ -141,9 +141,10 @@ describe("SubagentsChip", () => {
     fireEvent.pointerMove(row, { pointerType: "mouse" });
     await waitFor(() => {
       const tooltip = screen.getByRole("dialog", { name: "Thread details" });
-      expect(tooltip.textContent).toContain("Provider: codex");
+      expect(tooltip.textContent).not.toContain("Provider:");
+      expect(within(tooltip).getByRole("img", { name: "codex" })).toBeDefined();
       expect(tooltip.textContent).toContain(fail ? "Model: Unavailable" : "Model: gpt-6");
-      if (!fail) expect(tooltip.textContent).toContain("Reasoning: high");
+      if (!fail) expect(tooltip.textContent).toContain("Reasoning: High");
     });
     expect(requests).toBe(1);
   });
